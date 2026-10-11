@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.data/
+.npm-cache/
+playwright-report/
+test-results/
+debug.log
+*.backup
+*.pem
+*.key

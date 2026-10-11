@@ -1,0 +1,23 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui);
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  letter-spacing: 0;
+}
+
+button, input, select, textarea, svg text {
+  font-family: var(--font-ui);
+}
+
+.g-hora, .nota-input, .cal-dia, .tile b, .burbuja .cuenta {
+  font-variant-numeric: tabular-nums;
+}

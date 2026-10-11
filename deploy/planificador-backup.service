@@ -1,0 +1,17 @@
+[Unit]
+Description=Backup PostgreSQL Planificador FRH
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+StateDirectory=planificador-backups
+StateDirectoryMode=0700
+ExecStart=/usr/local/lib/planificador/backup.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/planificador-backups
