@@ -106,8 +106,10 @@ persiste en la base; una falla conserva la ultima version valida. Configuracion,
 validaciones y supervision: [docs/horarios.md](docs/horarios.md).
 
 Seguir [docs/debian.md](docs/debian.md): usuario dedicado, PostgreSQL, Node 24,
-systemd, Nginx, TLS, firewall, logs, backup/restauracion y reversion. No publicar
-el directorio del repositorio como raiz estatica.
+systemd, Nginx, TLS, logs y backups, con comandos directos y una carpeta fija.
+Restauracion, administracion y despliegue por releases:
+[referencia avanzada](docs/debian-avanzado.md). No publicar el directorio del
+repositorio como raiz estatica.
 
 La version anterior se conserva en `legacy/index.html`, fuera de las rutas que
 sirve el backend. No habilitarla en produccion. Se mantiene como referencia hasta
