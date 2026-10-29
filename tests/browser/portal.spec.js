@@ -43,14 +43,37 @@ test('saving and reloading preserve server data without browser progress storage
   await open(page);
   await page.evaluate(() => { ST.estados[1] = 'aprobada'; guardar(); });
   await expect.poll(() => h.store.getPlan((h.config.tenantId + ':33333333-3333-3333-3333-333333333333'), 'mecanica').then(x => x?.data.estados[1])).toBe('aprobada');
-  await expect(page.locator('#btnSync')).toHaveText('Mi cuenta');
+  await expect(page.locator('#estadoSync')).toContainText('Guardado');
   await page.reload();
   await expect(page.locator('body')).not.toHaveClass(/portal-esperando/);
   expect(await page.evaluate(() => ST.estados[1])).toBe('aprobada');
   expect(await page.evaluate(() => Object.keys(localStorage).some(key => /frh-v1|sync-activo/.test(key)))).toBe(false);
-  await page.locator('#btnSync').click();
-  await page.locator('#modal [data-close-modal]').click();
-  await expect(page.locator('#velo')).not.toHaveClass(/abierto/);
+});
+
+test('account menu groups data actions, works with the keyboard and keeps the header compact', async ({page}, info) => {
+  await open(page);
+  const menu = page.locator('#menuCuenta'), button = page.locator('#btnSync');
+  await expect(menu).toBeHidden();
+  await button.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu).toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#syncSubir')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#btnExportar')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.locator('#syncSalirMicrosoft')).toBeFocused();
+  await expect(page.locator('#btnReiniciar')).toContainText('Reiniciar plan de Mecánica');
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
+  await button.click();
+  await expect(menu).toBeVisible();
+  await page.screenshot({path: info.outputPath('menu-cuenta.png')});
+  await page.locator('main').click({position: {x: 5, y: 5}});
+  await expect(menu).toBeHidden();
+  const header = await page.locator('.head-int').boundingBox();
+  expect(header.height).toBeLessThan(info.project.name === 'mobile' ? 70 : 80);
 });
 
 test('central schedules replace user overrides and preserve choices and progress without manual extraction', async ({page}) => {

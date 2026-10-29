@@ -1,13 +1,69 @@
-:root { color: #16343d; background: #f5f8fa; }
-* { box-sizing: border-box; }
-body { margin: 0; min-height: 100dvh; display: grid; place-items: center; border-top: 6px solid #00455c; }
-main { width: min(100% - 40px, 480px); padding: 40px 0; }
-img { display: block; margin-bottom: 24px; }
-.institution { color: #52656e; font-size: 14px; }
-h1 { font-size: 28px; font-weight: 700; line-height: 1.25; margin: 12px 0 24px; }
-p { font-size: 16px; line-height: 1.5; }
-.login { display: inline-flex; justify-content: center; align-items: center; background: #00455c; color: white; min-height: 46px; padding: 12px 18px; border-radius: 4px; margin-top: 16px; text-decoration: none; max-width: 100%; text-align: center; }
-.login:hover { background: #00657a; }
-.login:focus-visible { outline: 3px solid #d14559; outline-offset: 4px; }
-.login[aria-disabled] { background: #647780; pointer-events: none; }
-.development-login { font: inherit; border: 1px solid #00455c; cursor: pointer; }
+/* Misma gráfica que la pantalla «Elegí tu carrera» de index.html: tokens, panel diagonal y tarjeta. */
+:root {
+  --marca: #00455C; --acento: #00455C; --petrol: #00455C; --texto: #454545; --gris: #5c7482;
+  --link: #0f6fd1; --fondo: #f4f7f9; --blanco: #fff; --borde: #dde6ea; --hover: #eef6f9; --muted: #5c7482;
+  --aviso: #b3001b;
+}
+html[data-tema="oscuro"] {
+  --petrol: #eaf2f6; --acento: #8ecde6; --texto: #dde7ec; --gris: #8aa9b6;
+  --link: #6fb4ff; --fondo: #0e1a20; --blanco: #16262e; --borde: #294550; --hover: #1e3540; --muted: #9db6c1;
+  --aviso: #ff8a9a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { color: var(--texto); background: var(--fondo); font-size: 15px; line-height: 1.5; display: flex; min-height: 100vh; }
+@supports (height: 100dvh) { body { min-height: 100dvh; } }
+button { font-family: inherit; cursor: pointer; }
+
+/* El panel azul entra en diagonal sobre el claro, como la gráfica de la Facultad. */
+.login-izq { position: relative; flex: 0 0 48%; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 46px 40px; background: linear-gradient(135deg, #00293a 0%, #00455C 55%, #0a6a8c 100%);
+  clip-path: polygon(0 0, 100% 0, 72% 100%, 0 100%); }
+.login-izq .marca-agua { position: absolute; left: 2%; top: 50%; transform: translateY(-50%); width: 52%; opacity: .16; }
+.login-izq .marca-agua path { fill: none; stroke: #cfe6f0; stroke-width: .9; }
+.login-izq .lema { position: relative; color: #fff; font-size: 24px; font-weight: 400; line-height: 1.35; }
+.login-izq .lema b { font-weight: 800; }
+
+/* Centrado con margin:auto: si la tarjeta no entra, scrollea en lugar de recortarse. */
+.login-der { flex: 1; position: relative; display: flex; margin-left: -8%; padding: 24px 120px 24px 30px; overflow-x: hidden; overflow-y: auto; }
+.rayas { position: absolute; inset: 0; pointer-events: none; }
+.rayas i { position: absolute; right: -3%; height: 15px; border-radius: 2px; transform: skewX(-38deg); }
+.rayas i:nth-child(1) { top: 25%; width: 19%; background: linear-gradient(90deg, transparent, #00D2F2); }
+.rayas i:nth-child(2) { top: 37%; width: 15%; background: linear-gradient(90deg, transparent, #8DCC3D); }
+.rayas i:nth-child(3) { top: 48%; width: 20%; background: linear-gradient(90deg, transparent, #FFAB00); }
+.rayas i:nth-child(4) { top: 59%; width: 14%; background: linear-gradient(90deg, transparent, #B047B3); }
+.rayas i:nth-child(5) { top: 70%; width: 18%; background: linear-gradient(90deg, transparent, #FF2644); }
+
+.login-card { position: relative; width: 100%; max-width: 480px; margin: auto; background: var(--blanco); border: 1px solid var(--borde);
+  border-radius: 16px; padding: 38px 42px 24px; box-shadow: 0 18px 50px rgba(0, 41, 58, .16); }
+html[data-tema="oscuro"] .login-card { box-shadow: 0 18px 50px rgba(0, 0, 0, .5); }
+.logo-login { display: flex; justify-content: center; margin-bottom: 24px; }
+.logo-login svg { height: 38px; width: auto; }
+html[data-tema="oscuro"] .logo-login svg .st0,
+html[data-tema="oscuro"] .logo-login svg .st1 { fill: #fff; }
+.login-card h1 { text-align: center; color: var(--petrol); font-size: 25px; font-weight: 700; line-height: 1.25; margin-bottom: 7px; }
+.bajada { text-align: center; color: var(--muted); font-size: 13.5px; line-height: 1.55; margin-bottom: 22px; }
+.estado { text-align: center; font-size: 14px; font-weight: 600; color: var(--texto); background: var(--hover);
+  border: 1px solid var(--borde); border-radius: 10px; padding: 11px 15px; margin-bottom: 4px; }
+.estado.aviso { color: var(--aviso); }
+
+.btn-continuar { width: 100%; margin-top: 18px; padding: 14px; border: none; border-radius: 10px; background: var(--marca); color: #fff;
+  font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  text-decoration: none; transition: .15s; }
+.btn-continuar:hover { background: #00344a; }
+html[data-tema="oscuro"] .btn-continuar { background: var(--acento); color: #04222e; }
+html[data-tema="oscuro"] .btn-continuar:hover { background: #b3e0f0; }
+.btn-continuar[aria-disabled] { opacity: .45; pointer-events: none; }
+.btn-alt { width: 100%; margin-top: 10px; padding: 12px; border: 1px solid var(--borde); border-radius: 10px; background: var(--blanco);
+  color: var(--petrol); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: .15s; }
+.btn-alt:hover { border-color: var(--acento); background: var(--hover); }
+.btn-continuar:focus-visible, .btn-alt:focus-visible { outline: 3px solid var(--acento); outline-offset: 3px; }
+html:not([data-tema="oscuro"]) .btn-continuar:focus-visible { outline-color: #0a6a8c; }
+
+.login-pie { text-align: center; margin-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+@media (max-width: 860px) {
+  .login-izq { display: none; }
+  .login-der { margin-left: 0; padding: 18px 14px 26px; }
+  .login-card { padding: 26px 20px 20px; }
+  .login-card h1 { font-size: 22px; }
+}

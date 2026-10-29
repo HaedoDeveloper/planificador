@@ -96,6 +96,10 @@ real con Entra, la propagacion de bajas, HTTPS/Nginx ni 1000 usuarios activos.
 
 ## Despliegue y operacion
 
+Repositorio de trabajo: [HaedoDeveloper/planificador](https://github.com/HaedoDeveloper/planificador).
+El [instructivo de instalacion en Debian 13](docs/debian.md) incluye descarga,
+configuracion de Entra, PostgreSQL, HTTPS, servicio, backups y actualizaciones.
+
 Los horarios se actualizan centralmente desde la web oficial al iniciar y cada
 seis horas, sin copias manuales por parte de los alumnos. El catalogo compartido
 persiste en la base; una falla conserva la ultima version valida. Configuracion,

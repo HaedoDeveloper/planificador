@@ -17,11 +17,11 @@ test('temporary button opens the planner and supports saving and logout', async 
   await page.screenshot({path: info.outputPath('temporary-login.png')});
   await page.getByRole('button', {name: 'Ingresar para pruebas'}).click();
   await expect(page.locator('body')).not.toHaveClass(/portal-esperando/);
-  await expect(page.locator('#h1Carrera')).toContainText('Mecánica');
+  await expect(page.locator('#btnCarrera')).toContainText('Mecánica');
   await page.evaluate(async () => { ST.estados[1] = 'aprobada'; guardar(); await pushRemoto(); });
   expect((await h.store.getPlan('development:local-preview', 'mecanica')).data.estados[1]).toBe('aprobada');
   await page.locator('#btnSync').click();
-  await expect(page.locator('#modal')).toContainText('Cuenta de prueba local');
+  await expect(page.locator('#menuCuenta')).toContainText('Cuenta de prueba local');
   await page.locator('#syncSalir').click();
   await expect(page).toHaveURL(h.origin + '/login');
 });

@@ -1,5 +1,5 @@
 let usuario = null, csrfPortal = null, ultimaSync = null, bloqueadoPortal = true;
-let colaGuardado = Promise.resolve(), tPush = null, tCarga = 0;
+let colaGuardado = Promise.resolve(), tPush = null, tCarga = 0, falloGuardado = false;
 let sesionPortal = null, actividadPendiente = false, destinoSesion = null;
 let ultimaConsultaHorarios = 0;
 const bloqueo = document.createElement('div');
@@ -138,7 +138,7 @@ function pushRemoto() {
   clearTimeout(tPush);
   colaGuardado = colaGuardado.catch(() => {}).then(async () => {
     for (const [slug, entry] of memoriaCarreras) if (entry.pending) await guardarCarrera(slug);
-  });
+  }).then(() => { falloGuardado = false; pintarBotonSync(); }, error => { falloGuardado = true; pintarBotonSync(); throw error; });
   return colaGuardado;
 }
 function programarPush() {
@@ -165,12 +165,28 @@ async function sincronizarAlEntrar() {
 function reconectarSync() {
   if (usuario) sincronizarAlEntrar().catch(error => bloquearPortal('No se pudo cargar la planificación', error.message));
 }
+function iniciales(nombre) {
+  const partes = nombre.split(/\s+/).filter(Boolean);
+  const texto = partes.length > 1 ? partes[0][0] + partes.at(-1)[0] : (partes[0] || '?').slice(0, 2);
+  return texto.toLocaleUpperCase('es-AR');
+}
+/* El estado de guardado se muestra aparte del botón de la cuenta: informa sin pedir un clic. */
 function pintarBotonSync() {
   const button = document.querySelector('#btnSync');
   button.hidden = false;
   const pending = [...memoriaCarreras.values()].some(x => x.pending);
-  button.textContent = pending ? 'Cambios pendientes' : 'Mi cuenta';
+  const nombre = usuario?.name || 'Cuenta institucional';
+  document.querySelector('#avatarIni').textContent = iniciales(nombre);
+  button.setAttribute('aria-label', 'Mi cuenta: ' + nombre);
   button.title = usuario ? usuario.email || usuario.name : 'Cuenta institucional';
+  document.querySelector('#menuNombre').textContent = nombre;
+  document.querySelector('#menuEmail').textContent = usuario?.email || '';
+  const [clase, icono, texto] = falloGuardado ? ['aviso', '●', 'Sin guardar'] : pending ? ['', '…', 'Guardando…'] : ultimaSync ? ['ok', '✓', 'Guardado'] : ['', '', ''];
+  const estado = document.querySelector('#estadoSync');
+  estado.className = 'estado-sync ' + clase;
+  estado.innerHTML = texto ? `<span aria-hidden="true">${icono}</span><span class="txt">${texto}</span>` : '';
+  document.querySelector('#menuEstado').textContent = falloGuardado ? 'Hay cambios sin guardar.' : pending ? 'Guardando cambios…'
+    : ultimaSync ? 'Guardado a las ' + ultimaSync.toLocaleTimeString('es-AR', {hour: '2-digit', minute: '2-digit'}) : 'Sin cambios pendientes.';
 }
 async function salirPortal(microsoft) {
   try {
@@ -181,20 +197,38 @@ async function salirPortal(microsoft) {
     location.assign(result.redirect);
   } catch (error) { toast(error.message); }
 }
-function abrirModalSync() {
-  const pending = [...memoriaCarreras.values()].some(x => x.pending);
-  document.querySelector('#modal').innerHTML = `<button class="cerrar" data-close-modal>✕</button>
-    <h3>Mi cuenta</h3><p>${escHTML(usuario?.name || '')}</p><p>${escHTML(usuario?.email || '')}</p>
-    <p>${pending ? 'Hay cambios pendientes.' : ultimaSync ? 'Guardado: ' + escHTML(ultimaSync.toLocaleTimeString('es-AR')) : 'Sin cambios pendientes.'}</p>
-    <button class="btn" id="syncSubir">Guardar ahora</button>
-    <button class="btn peligro" id="syncSalir">Cerrar sesión del portal</button>
-    <button class="btn" id="syncSalirMicrosoft">Cerrar también Microsoft</button>`;
-  document.querySelector('#syncSubir').onclick = () => pushRemoto().then(() => { toast('Planificación guardada'); abrirModalSync(); }).catch(error => toast(error.message));
-  document.querySelector('#syncSalir').onclick = () => salirPortal(false);
-  document.querySelector('#syncSalirMicrosoft').onclick = () => salirPortal(true);
-  document.querySelector('#velo').classList.add('abierto');
+/* Menú de la cuenta con el patrón de menú de WAI-ARIA: flechas, Inicio/Fin, Escape y Tab. */
+const botonCuenta = document.querySelector('#btnSync'), menuCuenta = document.querySelector('#menuCuenta');
+const itemsMenu = () => [...menuCuenta.querySelectorAll('[role="menuitem"]:not([hidden])')];
+function abrirMenuCuenta(foco = 0) {
+  pintarBotonSync();
+  menuCuenta.hidden = false;
+  botonCuenta.setAttribute('aria-expanded', 'true');
+  itemsMenu().at(foco)?.focus();
 }
-document.querySelector('#btnSync').onclick = abrirModalSync;
+function cerrarMenuCuenta(devolverFoco) {
+  if (menuCuenta.hidden) return;
+  menuCuenta.hidden = true;
+  botonCuenta.setAttribute('aria-expanded', 'false');
+  if (devolverFoco) botonCuenta.focus();
+}
+botonCuenta.onclick = () => menuCuenta.hidden ? abrirMenuCuenta() : cerrarMenuCuenta(true);
+botonCuenta.addEventListener('keydown', event => {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); abrirMenuCuenta(event.key === 'ArrowDown' ? 0 : -1); }
+  if (event.key === 'Escape') cerrarMenuCuenta(true);
+});
+menuCuenta.addEventListener('keydown', event => {
+  const items = itemsMenu(), actual = items.indexOf(document.activeElement);
+  const destino = {ArrowDown: actual + 1, ArrowUp: actual - 1, Home: 0, End: items.length - 1}[event.key];
+  if (destino !== undefined) { event.preventDefault(); items[(destino + items.length) % items.length].focus(); }
+  else if (event.key === 'Escape') { event.preventDefault(); cerrarMenuCuenta(true); }
+  else if (event.key === 'Tab') cerrarMenuCuenta(false);
+});
+menuCuenta.addEventListener('click', event => { if (event.target.closest('[role="menuitem"]')) cerrarMenuCuenta(false); });
+document.addEventListener('pointerdown', event => { if (!event.target.closest('.menu-cuenta')) cerrarMenuCuenta(false); });
+document.querySelector('#syncSubir').onclick = () => pushRemoto().then(() => toast('Planificación guardada')).catch(error => toast(error.message));
+document.querySelector('#syncSalir').onclick = () => salirPortal(false);
+document.querySelector('#syncSalirMicrosoft').onclick = () => salirPortal(true);
 document.addEventListener('click', event => { if (event.target.closest('[data-close-modal]')) cerrarModal(); });
 for (const eventName of ['pointerdown', 'keydown', 'touchstart']) {
   document.addEventListener(eventName, event => { if (event.isTrusted && !bloqueadoPortal) actividadPendiente = true; }, {passive: true});

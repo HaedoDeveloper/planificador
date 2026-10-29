@@ -55,7 +55,7 @@ export async function createApp({config, store, entra, schedules, now = Date.now
     catch { res.status(503).json({status: 'unavailable'}); }
   });
   for (const [url, file] of Object.entries({
-    '/cleanup.js': 'client/cleanup.js', '/login.css': 'client/login.css', '/portal.js': 'client/portal.js',
+    '/cleanup.js': 'client/cleanup.js', '/login.css': 'client/login.css', '/portal.js': 'client/portal.js', '/theme.js': 'client/theme.js',
     '/typography.css': 'client/typography.css', '/fonts/inter-variable.woff2': 'client/fonts/InterVariable.woff2',
     '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png', '/manifest.webmanifest': 'manifest.webmanifest',
   })) app.get(url, (req, res) => res.sendFile(resolve(root, file), {cacheControl: false}));
@@ -64,14 +64,15 @@ export async function createApp({config, store, entra, schedules, now = Date.now
     let message = config.authConfigured ? 'Ingresá con tu cuenta institucional.' : 'La configuración del acceso institucional está pendiente.';
     if (config.authConfigured && req.query.error) message = 'No se pudo autorizar el acceso. Usá una cuenta miembro de la universidad.';
     if (req.query.expired) message = 'La sesión terminó. Volvé a iniciar sesión.';
+    const warning = !config.authConfigured || !!req.query.error || !!req.query.expired;
     let developmentForm = '';
     if (developmentLogin && localDevelopmentRequest(req)) {
       res.set('Referrer-Policy', 'same-origin');
       const csrfToken = token();
       res.cookie(developmentCookie, csrfToken, {...options, maxAge: config.policy.transactionMs});
-      developmentForm = `<form action="/auth/dev-login" method="post"><input type="hidden" name="token" value="${csrfToken}"><button class="login development-login" type="submit">Ingresar para pruebas</button></form>`;
+      developmentForm = `<form action="/auth/dev-login" method="post"><input type="hidden" name="token" value="${csrfToken}"><button class="btn-alt" type="submit">Ingresar para pruebas</button></form>`;
     }
-    res.type('html').send(login.replace('<!--MESSAGE-->', message)
+    res.type('html').send(login.replace('<!--MESSAGE-->', message).replace('<!--MESSAGE_CLASS-->', warning ? ' aviso' : '')
       .replace('<!--DISABLED-->', config.authConfigured ? '' : 'aria-disabled="true" tabindex="-1"')
       .replace('<!--DEVELOPMENT_LOGIN-->', developmentForm));
   });

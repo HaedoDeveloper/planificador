@@ -4,11 +4,38 @@ Esta guia no fue ejecutada contra el servidor. Requiere acceso SSH administrativ
 DNS del dominio hacia el servidor y las credenciales de Entra configuradas fuera
 del repositorio. Primero validar desarrollo y despues produccion.
 
+## Antes de empezar
+
+Ejecutar los bloques Bash por SSH en el servidor, como administrador con `sudo`.
+La guia usa Debian 13, amd64 o arm64 y `planificador.frh.utn.edu.ar`.
+Comprobar la version con `cat /etc/os-release`. Si usa otra version de Debian,
+revisar sus paquetes antes de seguir.
+
+- Apuntar el registro DNS A al servidor; publicar AAAA solo si IPv6 funciona.
+- Permitir TCP 80 y 443 en el firewall del proveedor y del servidor antes de
+  solicitar el certificado. Conservar SSH por su puerto real.
+- Permitir salida HTTPS hacia Microsoft, npm, Node.js, GitHub y el sitio oficial
+  de horarios. No se necesita un navegador en produccion.
+- Registrar la aplicacion de produccion siguiendo [entra.md](entra.md): tenant,
+  client ID, valor del client secret y claim opcional `acct` en el ID token.
+  La URI Web es `https://planificador.frh.utn.edu.ar/auth/callback`.
+
+Sin Entra configurado, los alumnos no pueden ingresar. El boton de prueba local
+no funciona en produccion.
+
+Arquitectura: Internet -> Nginx HTTPS -> Express en 127.0.0.1:3000 -> PostgreSQL
+local. El codigo proviene de
+[HaedoDeveloper/planificador](https://github.com/HaedoDeveloper/planificador).
+Los secretos quedan en `/etc/planificador/production.env` y los datos en PostgreSQL.
+Si se usa otro dominio, reemplazarlo en `APP_ORIGIN`, ambos archivos Nginx, las
+rutas del certificado, el comando Certbot y las URI registradas en Entra.
+
 ## Paquetes y usuario: modifican el sistema
 
 ```bash
 sudo apt update
-sudo apt install nginx postgresql postgresql-client certbot python3-certbot-nginx curl xz-utils ufw unattended-upgrades
+sudo apt install git ca-certificates nginx postgresql postgresql-client certbot python3-certbot-nginx curl xz-utils ufw unattended-upgrades
+sudo systemctl enable --now postgresql nginx
 sudo useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin planificador
 sudo install -d -m 0755 /opt/planificador/releases
 sudo install -d -m 0750 -o root -g planificador /etc/planificador
@@ -27,7 +54,7 @@ version, verifica el checksum oficial y conserva la descarga para trazabilidad.
 No instala desde scripts remotos ejecutados directamente.
 
 ```bash
-set -eu
+set -euo pipefail
 read -r -p 'Version exacta aprobada, con prefijo v24.: ' node_version
 printf '%s' "$node_version" | grep -Eq '^v24\.[0-9]+\.[0-9]+$'
 case "$(dpkg --print-architecture)" in
@@ -40,7 +67,7 @@ cd "$node_download"
 node_archive="node-$node_version-linux-$node_arch.tar.xz"
 curl -fSLO "https://nodejs.org/dist/$node_version/$node_archive"
 curl -fSLO "https://nodejs.org/dist/$node_version/SHASUMS256.txt"
-awk -v archive="$node_archive" '$2 == archive {print}' SHASUMS256.txt | sha256sum --check --strict
+awk -v archive="$node_archive" '$2 == archive {found=1; print} END {if (!found) exit 1}' SHASUMS256.txt | sha256sum --check --strict
 sudo tar -xJf "$node_archive" -C /opt
 sudo ln -s "/opt/node-$node_version-linux-$node_arch" /opt/node24
 /opt/node24/bin/node --version
@@ -68,15 +95,32 @@ El rol es propietario de esta base para aplicar el esquema; no administra otras
 bases. Configurar DATABASE_URL con la contrasena codificada correctamente como
 componente de URL. Un gestor de secretos puede materializar el archivo de entorno.
 
+## Descargar el repositorio
+
+Usar el usuario administrador, no root ni el usuario del servicio. Conservar este
+checkout para actualizar. Si el repositorio es privado, usar una clave SSH de
+despliegue de solo lectura y la URL SSH; no poner tokens en la URL.
+
+```bash
+mkdir -p "$HOME/src"
+git clone https://github.com/HaedoDeveloper/planificador.git "$HOME/src/planificador"
+checkout_dir="$HOME/src/planificador"
+git -C "$checkout_dir" switch main
+git -C "$checkout_dir" log -1 --oneline
+release_ref=$(git -C "$checkout_dir" rev-parse HEAD)
+printf 'Commit a instalar: %s\n' "$release_ref"
+```
+
+Registrar ese commit. Los bloques siguientes usan `checkout_dir` y `release_ref`
+de esta misma sesion Bash. Si se reconecta por SSH, volver a definirlos.
+
 ## Release y configuracion: modifican el sistema
 
 En un checkout revisado, con cambios incluidos en un commit validado, exportar
 solo archivos versionados. No copiar `.env`, la base de desarrollo o node_modules.
-Reemplazar los marcadores por el commit real y una ruta local absoluta del checkout.
+Las variables anteriores identifican el commit descargado y la ruta del checkout.
 
 ```bash
-release_ref='<commit_validado>'
-checkout_dir='<ruta_absoluta_del_checkout>'
 release_dir="/opt/planificador/releases/$release_ref"
 sudo install -d -m 0755 "$release_dir"
 git -C "$checkout_dir" archive "$release_ref" | sudo tar -x -C "$release_dir"
@@ -84,10 +128,39 @@ cd "$release_dir"
 sudo env PATH=/opt/node24/bin:/usr/bin:/bin /opt/node24/bin/npm ci --omit=dev
 sudo install -m 0640 -o root -g planificador deploy/production.env.example /etc/planificador/production.env
 sudoedit /etc/planificador/production.env
+```
+
+Completar el archivo antes de continuar:
+
+| Variable | Valor |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `HOST` / `PORT` | `127.0.0.1` / `3000` |
+| `APP_ORIGIN` | `https://planificador.frh.utn.edu.ar` |
+| `TRUST_PROXY` | `true`, detras del Nginx incluido |
+| `MICROSOFT_TENANT_ID` | Directory (tenant) ID de Entra |
+| `MICROSOFT_CLIENT_ID` | Application (client) ID de produccion |
+| `MICROSOFT_CLIENT_SECRET` | Valor del secreto, no su identificador |
+| `SESSION_SECRET` | Valor aleatorio generado con el comando siguiente |
+| `DATABASE_URL` | `postgresql://planificador:CLAVE_CODIFICADA@127.0.0.1:5432/planificador` |
+| `SCHEDULE_REFRESH_MINUTES` | `360` |
+
+Generar el secreto en el servidor y colocarlo solo en el archivo protegido:
+
+```bash
+/opt/node24/bin/node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+```
+
+Codificar los caracteres especiales de la clave PostgreSQL como componente de URL
+(por ejemplo, `@` se representa como `%40`). No agregar `DEV_LOGIN_ENABLED=true`.
+No crear un `.env` dentro del release. Una vez completado el archivo:
+
+```bash
 sudo ln -s "$release_dir" /opt/planificador/current
 sudo install -m 0644 deploy/planificador.service /etc/systemd/system/planificador.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now planificador
+curl -fsS http://127.0.0.1:3000/health/ready
 ```
 
 El ejemplo de entorno contiene marcadores: completar todo antes de iniciar. No
@@ -101,9 +174,11 @@ sin instalar navegadores ni cron; ver [horarios.md](horarios.md).
 ## HTTPS: modifican Nginx y certificados
 
 Primero revisar cualquier sitio existente que use el mismo dominio. Desde el
-directorio del release:
+directorio del release. Si UFW ya esta activo, permitir 80 y 443 antes de solicitar
+el certificado, conservando el puerto SSH real.
 
 ```bash
+cd /opt/planificador/current
 sudo install -m 0644 deploy/nginx-http.conf /etc/nginx/sites-available/planificador
 sudo ln -s /etc/nginx/sites-available/planificador /etc/nginx/sites-enabled/planificador
 sudo nginx -t
@@ -112,6 +187,8 @@ sudo certbot certonly --nginx -d planificador.frh.utn.edu.ar
 sudo install -m 0644 deploy/nginx.conf /etc/nginx/sites-available/planificador
 sudo nginx -t
 sudo systemctl reload nginx
+sudo install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+sudo install -m 0755 deploy/reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/planificador-nginx
 sudo certbot renew --dry-run
 ```
 
@@ -160,6 +237,7 @@ cambiar SystemMaxUse o MaxRetentionSec, revisar el impacto en otros servicios.
 ## Backups: crean archivos privados
 
 ```bash
+cd /opt/planificador/current
 sudo install -d -m 0755 /usr/local/lib/planificador
 sudo install -m 0755 deploy/backup.sh /usr/local/lib/planificador/backup.sh
 sudo install -m 0644 deploy/planificador-backup.service /etc/systemd/system/planificador-backup.service
@@ -194,19 +272,42 @@ Tras restaurar datos reales, revocar siempre las sesiones restauradas.
 
 ## Actualizacion y reversion: modifican el servicio
 
-Registrar el destino anterior con `readlink -f /opt/planificador/current`. Preparar
-un release nuevo, ejecutar pruebas en desarrollo y obtener backup. Cambiar el
-enlace solo despues de revisar la compatibilidad de esquema:
+Con las pruebas del nuevo commit aprobadas, descargarlo y preparar otro release.
+No repetir el bloque de instalacion inicial ni sobreescribir `production.env`.
+Ejecutar en una sesion Bash:
+
+```bash
+set -euo pipefail
+checkout_dir="$HOME/src/planificador"
+git -C "$checkout_dir" fetch origin main
+release_ref=$(git -C "$checkout_dir" rev-parse origin/main)
+release_dir="/opt/planificador/releases/$release_ref"
+previous_release=$(readlink -f /opt/planificador/current)
+printf 'Anterior: %s\nNuevo: %s\n' "$previous_release" "$release_dir"
+test ! -e "$release_dir"
+sudo install -d -m 0755 "$release_dir"
+git -C "$checkout_dir" archive "$release_ref" | sudo tar -x -C "$release_dir"
+cd "$release_dir"
+sudo env PATH=/opt/node24/bin:/usr/bin:/bin /opt/node24/bin/npm ci --omit=dev
+sudo systemctl start planificador-backup.service
+```
+
+Si `test` falla, ese release ya existe: comprobar si ya esta desplegado antes de
+continuar. El backup debe terminar correctamente. Registrar el destino anterior
+y cambiar el enlace solo despues de revisar la compatibilidad de esquema:
 
 ```bash
 sudo systemctl stop planificador
-sudo ln -sfn '/opt/planificador/releases/<nuevo_commit>' /opt/planificador/current
+sudo ln -sfn "$release_dir" /opt/planificador/current
 sudo systemctl start planificador
 curl -fsS http://127.0.0.1:3000/health/ready
 ```
 
 Para revertir, repetir con el commit anterior del portal y su configuracion
-compatible. No apuntar al HTML Firebase como alternativa publica. El esquema 2
+compatible; en la misma sesion se puede usar `"$previous_release"` como destino.
+Si cambio algun archivo de `deploy/`, revisar e instalar sus cambios y validar
+Nginx o recargar systemd segun corresponda antes de finalizar la actualizacion.
+No apuntar al HTML Firebase como alternativa publica. El esquema 2
 actual es aditivo; versiones futuras deben declarar si admiten rollback. Una
 restauracion de datos requiere un procedimiento separado porque perderia cambios
 posteriores al backup. No eliminar releases anteriores durante la validacion.
@@ -231,7 +332,29 @@ desbloquea una cuenta que ya estuviera bloqueada. El bloqueo local se verifica e
 cada peticion y persiste incluso si Entra permite autenticar. Esta via depende del
 acceso SSH del administrador, no de una cuenta alternativa de Google.
 
+## Comprobacion final y diagnostico
+
+Desde otro equipo, abrir `https://planificador.frh.utn.edu.ar`, ingresar con una
+cuenta miembro de la universidad, seleccionar una carrera, guardar un cambio y
+recargar. Verificar que persiste; cerrar sesion y comprobar que vuelve al login.
+Completar tambien [acceptance.md](acceptance.md) antes de habilitar el uso general.
+
+| Sintoma | Comprobacion |
+| --- | --- |
+| GitHub responde Repository not found | Revisar URL y acceso de la cuenta o clave SSH al repositorio privado. |
+| El servicio no inicia | `sudo journalctl -u planificador -n 100 --no-pager`; revisar Node 24, entorno y PostgreSQL. |
+| `/health/ready` devuelve 503 | Revisar conexion PostgreSQL y presencia de todas las credenciales de Entra. |
+| Nginx devuelve 502 | Comprobar `systemctl status planificador` y `curl http://127.0.0.1:3000/health/live`. |
+| Microsoft rechaza el retorno | Comparar exactamente la URI Web registrada con `/auth/callback` del dominio publico. |
+| Se rechaza un miembro al ingresar | Revisar tenant, claim opcional `acct` del ID token y vencimiento del client secret. |
+| Certbot falla | Comprobar DNS A/AAAA, acceso externo al puerto 80 y `sudo nginx -t`. |
+
+No compartir los archivos de entorno ni tokens al diagnosticar. La guia y las
+pruebas locales no sustituyen una instalacion verificada en el servidor Debian.
+
 ## Fuentes
 
 - [PostgreSQL en Debian 13](https://packages.debian.org/trixie/postgresql)
 - [Ciclo de soporte Node](https://nodejs.org/en/about/previous-releases)
+- [Descargas oficiales de Node 24](https://nodejs.org/en/download/archive/v24)
+- [Certbot con Nginx y renovaciones](https://eff-certbot.readthedocs.io/en/stable/using.html)
