@@ -177,6 +177,33 @@ Permitir 80 y 443 en los firewalls del servidor y del proveedor; conservar el
 puerto SSH real. Si hay registro AAAA, IPv6 tambien debe funcionar.
 No abrir 3000 ni 5432. Revisar si ya hay otro sitio Nginx con el mismo dominio.
 
+Nginx recibe HTTPS y reenvia todas las rutas, incluido `/auth/callback`, a
+`http://127.0.0.1:3000`. No configurar `root` ni `try_files` para servir el HTML.
+
+### 8.1. Comprobar el backend
+
+```bash
+curl -fsS http://127.0.0.1:3000/health/ready
+sudo nano /etc/planificador/production.env
+```
+
+El primer comando debe responder con `ready`. En el archivo deben figurar:
+
+```dotenv
+APP_ORIGIN=https://planificador.frh.utn.edu.ar
+HOST=127.0.0.1
+PORT=3000
+TRUST_PROXY=true
+```
+
+Si cambiaste el archivo, guardar y reiniciar:
+
+```bash
+sudo systemctl restart planificador
+```
+
+### 8.2. Habilitar HTTP y obtener el certificado
+
 Habilitar primero el sitio HTTP para obtener el certificado:
 
 ```bash
@@ -190,6 +217,10 @@ sudo certbot certonly --nginx -d planificador.frh.utn.edu.ar
 Si el enlace de `sites-enabled` ya existe y apunta al mismo archivo, continuar.
 Si `nginx -t` falla, corregirlo antes de recargar.
 Certbot pide un correo de contacto y aceptar sus condiciones.
+El sitio temporal devuelve 503 mientras se prepara HTTPS; es normal.
+No volver a copiar el sitio temporal si HTTPS ya funciona.
+
+### 8.3. Activar HTTPS
 
 Cuando Certbot confirme que obtuvo el certificado, activar HTTPS:
 
@@ -201,6 +232,102 @@ sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 sudo install -m 755 /opt/planificador/app/deploy/reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/planificador-nginx
 sudo systemctl enable --now certbot.timer
 sudo certbot renew --dry-run
+```
+
+### 8.4. Configuracion del sitio
+
+El comando anterior copia una configuracion ya preparada. Para verla o editarla:
+
+```bash
+sudo nano /etc/nginx/sites-available/planificador
+```
+
+Una vez obtenido el certificado, este es el contenido completo esperado.
+Reemplaza el contenido del archivo; no lo agregues al final de otro sitio:
+
+```nginx
+# Install inside the http context, for example sites-available/planificador.
+# Do not log query strings: OAuth callback codes must not appear in access logs.
+log_format planificador '$time_iso8601 "$request_method $uri $server_protocol" '
+                        '$status $body_bytes_sent $request_time "$upstream_http_x_request_id"';
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name planificador.frh.utn.edu.ar;
+    return 301 https://planificador.frh.utn.edu.ar$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name planificador.frh.utn.edu.ar;
+    ssl_certificate /etc/letsencrypt/live/planificador.frh.utn.edu.ar/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/planificador.frh.utn.edu.ar/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log /var/log/nginx/planificador-access.log planificador;
+    error_log /var/log/nginx/planificador-error.log warn;
+    client_max_body_size 1m;
+    # Error logs can contain the full request URL, including authorization codes.
+    location = /auth/callback {
+        error_log /dev/null;
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host planificador.frh.utn.edu.ar;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Connection "";
+        proxy_read_timeout 30s;
+        proxy_cache off;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host planificador.frh.utn.edu.ar;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Connection "";
+        proxy_read_timeout 30s;
+        proxy_connect_timeout 5s;
+        proxy_cache off;
+    }
+}
+```
+
+El formato del log y el bloque especial de `/auth/callback` evitan registrar
+codigos de autorizacion de Microsoft. La URI Web registrada en Entra debe ser
+`https://planificador.frh.utn.edu.ar/auth/callback`.
+
+Despues de cualquier cambio, validar antes de recargar:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 8.5. Comprobar el acceso
+
+```bash
+curl -I http://planificador.frh.utn.edu.ar/
+curl -I https://planificador.frh.utn.edu.ar/login
+```
+
+El primero debe devolver `301` hacia HTTPS y el segundo `200`.
+
+| Problema | Que revisar |
+| --- | --- |
+| Aparece la pagina inicial de Nginx | Revisar DNS, `server_name` y el enlace en `sites-enabled`. |
+| Respuesta 502 | Revisar el servicio `planificador` y su respuesta local en el puerto 3000. |
+| `conflicting server name` | Revisar si otro sitio habilitado tiene el mismo dominio antes de recargar. |
+| No encuentra el certificado | Obtenerlo con Certbot antes de activar HTTPS; comprobar su ruta con `sudo certbot certificates`. |
+| Microsoft rechaza el retorno | Comparar `APP_ORIGIN` y la URI Web registrada en Entra. |
+
+Para revisar errores:
+
+```bash
+sudo tail -n 50 /var/log/nginx/planificador-error.log
+sudo journalctl -u planificador -n 50 --no-pager
 ```
 
 Si usas otro dominio, cambiarlo en el entorno, ambos archivos Nginx, las rutas
@@ -280,5 +407,6 @@ Reiniciar despues de cambiar la configuracion:
 sudo systemctl restart planificador
 ```
 
-Referencias: [Node 24](https://nodejs.org/en/download/archive/v24) y
+Referencias: [Node 24](https://nodejs.org/en/download/archive/v24),
+[proxy de Nginx](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass) y
 [Certbot con Nginx](https://eff-certbot.readthedocs.io/en/stable/using.html#nginx).
