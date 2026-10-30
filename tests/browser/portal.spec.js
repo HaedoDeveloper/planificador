@@ -152,6 +152,35 @@ test('switching accounts in another tab does not transfer the previous plan', as
   expect(await h.store.getPlan(next.session.userId, 'mecanica')).toBe(null);
 });
 
+test('Aeroespacial uses the 2026 prerequisites and preserves student progress', async ({page}, info) => {
+  await open(page);
+  await page.evaluate(() => usarCarrera('aeronautica'));
+  await expect(page.locator('body')).not.toHaveClass(/portal-esperando/);
+  await expect(page.locator('#subCarrera')).toContainText('2187');
+  await page.evaluate(async () => {
+    ST.estados[2] = 'regular'; ST.estados[5] = 'regular'; ST.notas[5] = 8;
+    guardar(); await pushRemoto();
+  });
+  await page.reload();
+  await expect(page.locator('body')).not.toHaveClass(/portal-esperando/);
+  // The shared fixture selects Mecanica on every page load.
+  await page.evaluate(() => usarCarrera('aeronautica'));
+  await expect(page.locator('body')).not.toHaveClass(/portal-esperando/);
+  expect(await page.evaluate(() => ({computacion: puedeCursar(13), diseno: puedeCursar(3),
+    niveles: [3, 29, 39].map(o => porOrden[o].nivel), nota: ST.notas[5]})))
+    .toEqual({computacion: true, diseno: false, niveles: [2, 5, 4], nota: 8});
+  await page.locator('.nav-int button[data-vista="materias"]').click();
+  await expect(page.locator('#vista-materias')).toBeVisible();
+  await page.screenshot({path: info.outputPath('aero-correlativas-2026.png'), fullPage: true});
+  expect(await page.evaluate(() => {
+    ST.estados = Object.fromEntries(MATERIAS.filter(m => !m.electiva).map(m => [m.o, 'aprobada']));
+    ST.estados[50] = 'regular';
+    const sinElectivas = puedeRendir(50);
+    ST.estados[101] = 'aprobada'; ST.estados[102] = 'aprobada';
+    return {sinElectivas, conElectivas: puedeRendir(50)};
+  })).toEqual({sinElectivas: false, conElectivas: true});
+});
+
 test('switching careers while saving keeps independent plans', async ({page}) => {
   await open(page);
   await page.evaluate(() => { ST.estados[1] = 'aprobada'; guardar(); usarCarrera('industrial'); });

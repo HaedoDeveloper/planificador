@@ -96,6 +96,9 @@ real con Entra, la propagacion de bajas, HTTPS/Nginx ni 1000 usuarios activos.
 
 ## Despliegue y operacion
 
+Las correlativas de Ingenieria Aeroespacial se actualizaron a la Ord. 2187,
+vigente desde el ciclo 2026. Ver [detalle de cambios](docs/correlativas-aeronautica-2026.md).
+
 Repositorio de trabajo: [HaedoDeveloper/planificador](https://github.com/HaedoDeveloper/planificador).
 El [instructivo de instalacion en Debian 13](docs/debian.md) incluye descarga,
 configuracion de Entra, PostgreSQL, HTTPS, servicio, backups y actualizaciones.
