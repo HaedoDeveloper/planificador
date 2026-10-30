@@ -50,6 +50,7 @@ test('authentication diagnostics identify failures without logging provider data
     [{errorNo: '7000215', errorMessage: sensitive}, 'invalid_client_secret'],
     [{errorNo: 7000222}, 'expired_client_secret'],
     [{errorCode: 'invalid_client', message: sensitive}, 'invalid_client'],
+    [{errorCode: 'nonce_mismatch', message: sensitive}, 'nonce_mismatch'],
     [{code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', claim: 'acct', payload: sensitive}, 'token_claim_acct'],
     [{code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', claim: sensitive}, 'token_claim_validation'],
     [{code: 'ERR_JWT_EXPIRED'}, 'ERR_JWT_EXPIRED'],

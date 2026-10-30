@@ -13,7 +13,7 @@ export function authFailureReason(error, fallback = 'identity_validation') {
   };
   if (Object.hasOwn(provider, error?.errorNo)) return provider[error.errorNo];
   const codes = ['invalid_client', 'invalid_grant', 'unauthorized_client', 'invalid_client_credential',
-    'network_error', 'post_request_failed', 'endpoints_resolution_error',
+    'network_error', 'post_request_failed', 'endpoints_resolution_error', 'nonce_mismatch',
     'ERR_JWT_EXPIRED', 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED', 'ERR_JWKS_TIMEOUT', 'ERR_JWKS_NO_MATCHING_KEY'];
   const code = error?.errorCode || error?.code;
   if (codes.includes(code)) return code;
@@ -34,12 +34,12 @@ export async function validateIdToken(idToken, config, nonce, keys) {
   return memberIdentity(payload, config.tenantId, nonce);
 }
 
-export function createEntra(config) {
+export function createEntra(config, {networkClient, signingKeys} = {}) {
   const authority = `https://login.microsoftonline.com/${config.tenantId}`;
-  const keys = createRemoteJWKSet(new URL(authority + '/discovery/v2.0/keys'), {timeoutDuration: 8000});
+  const keys = signingKeys || createRemoteJWKSet(new URL(authority + '/discovery/v2.0/keys'), {timeoutDuration: 8000});
   const client = () => new ConfidentialClientApplication({
     auth: {clientId: config.clientId, authority, clientSecret: config.clientSecret},
-    system: {loggerOptions: {piiLoggingEnabled: false, loggerCallback: () => {}}},
+    system: {loggerOptions: {piiLoggingEnabled: false, loggerCallback: () => {}}, ...(networkClient ? {networkClient} : {})},
   });
   const redirectUri = config.origin + '/auth/callback';
   return {
@@ -51,7 +51,7 @@ export function createEntra(config) {
       });
     },
     async exchange(code, tx) {
-      const result = await client().acquireTokenByCode({code, scopes: ['openid', 'profile'], redirectUri, codeVerifier: tx.verifier});
+      const result = await client().acquireTokenByCode({code, scopes: ['openid', 'profile'], redirectUri, codeVerifier: tx.verifier, nonce: tx.nonce});
       return validateIdToken(result.idToken, config, tx.nonce, keys);
     },
     logoutUrl() {

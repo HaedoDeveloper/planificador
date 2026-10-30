@@ -82,7 +82,7 @@ secretos ni mensajes completos de Microsoft:
 | `token_claim_iss`, `token_claim_aud` o `tenant_mismatch` | Comprobar tenant y aplicacion configurados. |
 | `ERR_JWT_EXPIRED` | Comprobar fecha y sincronizacion horaria del servidor. |
 | `ERR_JWKS_TIMEOUT`, `network_error` o `post_request_failed` | Revisar salida HTTPS y DNS hacia Microsoft. |
-| `invalid_transaction` o `nonce_mismatch` | Reintentar desde el dominio HTTPS correcto sin reutilizar un callback anterior. |
+| `invalid_transaction` o `nonce_mismatch` | Reintentar desde el dominio HTTPS correcto sin reutilizar un callback anterior. En versiones anteriores al arreglo del nonce, actualizar el codigo y reiniciar. |
 | `blocked` | La cuenta esta bloqueada en la base local. |
 | `session_persistence` | Revisar la base de datos y el almacenamiento de la sesion. |
 | `identity_validation` | Error no clasificado; esta etiqueta por si sola no confirma que la cuenta sea invitada. |
@@ -90,6 +90,14 @@ secretos ni mensajes completos de Microsoft:
 Las versiones anteriores registran solo `identity_validation` para varias de
 estas causas. Actualizar el codigo y reiniciar el servicio para ver las nuevas
 etiquetas. No compartir `production.env`, tokens ni URLs completas de callback.
+
+La version MSAL 7 instalada exige recibir el nonce esperado tambien en
+`acquireTokenByCode`. El backend lo toma de la misma transaccion usada al generar
+la URL de login. Las primeras versiones lo enviaban solo al iniciar el flujo,
+lo que MSAL rechazaba antes de la validacion JWT propia; en esos casos el log
+antiguo mostraba `identity_validation`. La prueba de integracion reproduce ese
+rechazo con respuestas sinteticas y comprueba tanto el login corregido como el
+rechazo de un nonce diferente. No verifica credenciales reales del tenant.
 
 ## Referencias oficiales
 
