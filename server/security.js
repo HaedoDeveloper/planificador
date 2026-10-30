@@ -17,12 +17,19 @@ export function sessionStatus(session, now, policy) {
   if (now - session.validatedAt >= policy.revalidateMs) return 'reauth_required';
   return 'valid';
 }
+export class IdentityValidationError extends Error {
+  constructor(reason) {
+    super('Institutional membership validation failed.');
+    this.reason = reason;
+  }
+}
 export function memberIdentity(claims, tenantId, expectedNonce) {
   const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (claims.tid?.toLowerCase() !== tenantId || !guid.test(claims.oid || '') ||
-      ![0, '0'].includes(claims.acct) || !equal(claims.nonce, expectedNonce)) {
-    throw new Error('Institutional membership validation failed.');
-  }
+  if (claims.tid?.toLowerCase() !== tenantId) throw new IdentityValidationError('tenant_mismatch');
+  if (!guid.test(claims.oid || '')) throw new IdentityValidationError('invalid_object_id');
+  if (claims.acct === undefined) throw new IdentityValidationError('missing_acct');
+  if (![0, '0'].includes(claims.acct)) throw new IdentityValidationError('not_tenant_member');
+  if (!equal(claims.nonce, expectedNonce)) throw new IdentityValidationError('nonce_mismatch');
   return {
     id: tenantId + ':' + claims.oid.toLowerCase(),
     name: typeof claims.name === 'string' ? claims.name.slice(0, 160) : 'Cuenta institucional',

@@ -90,6 +90,8 @@ test('guest callbacks and provider errors expose no provider details or credenti
   }
   assert.ok(!JSON.stringify(h.events).includes('sensitive provider detail'));
   assert.ok(!JSON.stringify(h.events).includes('synthetic-test-credential'));
+  assert.deepEqual(h.events.filter(x => x.event === 'auth_rejected').map(x => x.reason),
+    ['not_tenant_member', 'identity_validation']);
 });
 test('production cookies are Secure, HttpOnly, SameSite and host-only', async t => {
   const h = await fixture(t, {production: true, origin: 'https://planificador.frh.utn.edu.ar'});

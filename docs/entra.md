@@ -60,6 +60,37 @@ La version actual usa un client secret. Autenticacion mediante certificado es
 una mejora opcional futura; no esta implementada. Una identidad administrada de
 Azure no se asume disponible en un servidor Debian propio.
 
+## Diagnosticar un login rechazado
+
+El mensaje del navegador es generico. Despues de intentar ingresar, consultar:
+
+```bash
+sudo journalctl -u planificador --since '5 minutes ago' --no-pager | grep auth_
+```
+
+El evento `auth_rejected` contiene una etiqueta fija en `reason`, sin tokens,
+secretos ni mensajes completos de Microsoft:
+
+| reason | Que revisar |
+| --- | --- |
+| `token_claim_acct` o `missing_acct` | Agregar `acct` como claim opcional del ID token en el registro de la app. |
+| `not_tenant_member` | La cuenta debe ser miembro del tenant; se rechazan invitados. |
+| `invalid_client_secret` o `invalid_client` | Usar el valor del client secret, no su identificador; comprobar la app correspondiente. |
+| `expired_client_secret` | Crear un secreto vigente, actualizar el entorno y reiniciar el servicio. |
+| `application_not_found` | Comprobar tenant ID y client ID. |
+| `redirect_uri_mismatch` | Comparar la URI Web registrada con APP_ORIGIN seguido de `/auth/callback`. |
+| `token_claim_iss`, `token_claim_aud` o `tenant_mismatch` | Comprobar tenant y aplicacion configurados. |
+| `ERR_JWT_EXPIRED` | Comprobar fecha y sincronizacion horaria del servidor. |
+| `ERR_JWKS_TIMEOUT`, `network_error` o `post_request_failed` | Revisar salida HTTPS y DNS hacia Microsoft. |
+| `invalid_transaction` o `nonce_mismatch` | Reintentar desde el dominio HTTPS correcto sin reutilizar un callback anterior. |
+| `blocked` | La cuenta esta bloqueada en la base local. |
+| `session_persistence` | Revisar la base de datos y el almacenamiento de la sesion. |
+| `identity_validation` | Error no clasificado; esta etiqueta por si sola no confirma que la cuenta sea invitada. |
+
+Las versiones anteriores registran solo `identity_validation` para varias de
+estas causas. Actualizar el codigo y reiniciar el servicio para ver las nuevas
+etiquetas. No compartir `production.env`, tokens ni URLs completas de callback.
+
 ## Referencias oficiales
 
 - [Authorization Code + PKCE](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)

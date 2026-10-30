@@ -4,7 +4,8 @@ import { rateLimit } from 'express-rate-limit';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { cookie, digest, equal, sessionStatus, token, validState } from './security.js';
+import { cookie, digest, equal, IdentityValidationError, sessionStatus, token, validState } from './security.js';
+import { authFailureReason } from './entra.js';
 import { createSchedules } from './schedules.js';
 
 export const CAREERS = new Set(['aeronautica', 'bioingenieria', 'electronica', 'ferroviaria', 'industrial', 'mecanica']);
@@ -134,14 +135,16 @@ export async function createApp({config, store, entra, schedules, now = Date.now
       emit('auth_rejected', req, 'provider_rejected');
       return res.redirect('/login?error=authorization');
     }
+    let failureStage = 'identity_validation';
     try {
       const profile = await entra.exchange(req.query.code, tx);
+      failureStage = 'session_persistence';
       const user = await store.upsertUser(profile);
-      if (user.blocked) throw new Error('blocked');
+      if (user.blocked) throw new IdentityValidationError('blocked');
       req.user = user;
       const current = await loadSession(req);
       const previous = tx.sessionId ? await store.getSession(tx.sessionId) : null;
-      if (tx.sessionId && (!previous || previous.id !== current?.id || previous.userId !== user.id || sessionStatus(previous, now(), config.policy) === 'expired')) throw new Error('renewal_identity');
+      if (tx.sessionId && (!previous || previous.id !== current?.id || previous.userId !== user.id || sessionStatus(previous, now(), config.policy) === 'expired')) throw new IdentityValidationError('renewal_identity');
       const raw = token();
       const session = {
         id: digest(raw, config.sessionSecret), userId: user.id, csrf: token(),
@@ -153,8 +156,8 @@ export async function createApp({config, store, entra, schedules, now = Date.now
       res.cookie(sessionName, raw, options);
       emit('auth_succeeded', req);
       res.redirect('/');
-    } catch {
-      emit('auth_rejected', req, 'identity_validation');
+    } catch (error) {
+      emit('auth_rejected', req, authFailureReason(error, failureStage));
       res.redirect('/login?error=authorization');
     }
   });

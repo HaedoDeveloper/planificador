@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPair, SignJWT } from 'jose';
 import { readConfig, SESSION_POLICY } from '../server/config.js';
-import { memberIdentity, sessionStatus, validState } from '../server/security.js';
-import { validateIdToken } from '../server/entra.js';
+import { IdentityValidationError, memberIdentity, sessionStatus, validState } from '../server/security.js';
+import { authFailureReason, validateIdToken } from '../server/entra.js';
 import { testConfig, tenant, client, oid } from './helpers.js';
 
 test('production rejects missing secrets, HTTP, SQLite and public bindings', () => {
@@ -43,6 +43,32 @@ test('JWT validation checks signature, issuer, audience, expiry, nonce and membe
   }
   await assert.rejects(validateIdToken(await issue({}, other.privateKey), config, 'nonce', publicKey));
 });
+test('authentication diagnostics identify failures without logging provider data', () => {
+  const sensitive = 'synthetic-test-credential sensitive provider detail';
+  for (const [error, reason] of [
+    [new IdentityValidationError('not_tenant_member'), 'not_tenant_member'],
+    [{errorNo: '7000215', errorMessage: sensitive}, 'invalid_client_secret'],
+    [{errorNo: 7000222}, 'expired_client_secret'],
+    [{errorCode: 'invalid_client', message: sensitive}, 'invalid_client'],
+    [{code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', claim: 'acct', payload: sensitive}, 'token_claim_acct'],
+    [{code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', claim: sensitive}, 'token_claim_validation'],
+    [{code: 'ERR_JWT_EXPIRED'}, 'ERR_JWT_EXPIRED'],
+    [{errorCode: sensitive, code: sensitive, message: sensitive}, 'identity_validation'],
+    [new Error(sensitive), 'identity_validation'],
+    [null, 'identity_validation'],
+  ]) assert.equal(authFailureReason(error), reason);
+  assert.equal(authFailureReason(new Error(sensitive), 'session_persistence'), 'session_persistence');
+  const claims = {tid: tenant, oid, acct: 0, nonce: 'nonce'};
+  for (const [extra, reason] of [
+    [{acct: undefined}, 'missing_acct'], [{acct: 1}, 'not_tenant_member'],
+    [{tid: client}, 'tenant_mismatch'], [{oid: ''}, 'invalid_object_id'],
+    [{nonce: 'wrong'}, 'nonce_mismatch'],
+  ]) {
+    assert.throws(() => memberIdentity({...claims, ...extra}, tenant, 'nonce'),
+      error => authFailureReason(error) === reason);
+  }
+});
+
 test('state validation bounds nesting, size and prototype keys', () => {
   assert.equal(validState({version: 1, estados: {}, examenes: []}), true);
   assert.equal(validState({version: 1, estados: []}), false);
